@@ -176,18 +176,35 @@
     };
 
     // --- TensorFlow Model Loader ---
-    async function initTFModel() {
-        try {
+    //async function initTFModel() {
+      //  try {
             // Attempt to load the model from the local "model" folder
-            cnnModel = await tf.loadLayersModel('https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json');
-            els.aiStatus.textContent = "✅ CNN Model Loaded and Ready";
-            els.aiStatus.style.color = "var(--success)";
-            els.btnPredictAI.disabled = false;
-        } catch (err) {
-            els.aiStatus.textContent = "⚠️ No model found in /model/ directory.";
-            console.warn("TF Model Load Error: " + err);
-        }
+        //    cnnModel = await tf.loadLayersModel('https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json');
+        //    els.aiStatus.textContent = "✅ CNN Model Loaded and Ready";
+        //    els.aiStatus.style.color = "var(--success)";
+        //    els.btnPredictAI.disabled = false;
+        //} catch (err) {
+        //    els.aiStatus.textContent = "⚠️ No model found in /model/ directory.";
+        //    console.warn("TF Model Load Error: " + err);
+        //}
+    //}
+
+    async function initTFModel() {
+    try {
+        // Change this URL to your exact GitHub Pages absolute URL if you haven't already!
+        const modelUrl = 'https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json';
+        
+        console.log("Attempting to load model from:", modelUrl);
+        cnnModel = await tf.loadLayersModel(modelUrl);
+        
+        document.getElementById('modelStatus').innerText = "✅ CNN Model Loaded and Ready";
+        document.getElementById('predictBtn').disabled = false;
+    } catch (error) {
+        document.getElementById('modelStatus').innerText = "❌ Load Failed";
+        // THIS IS THE MAGIC LINE: It forces the iPad to show the hidden error
+        alert("CRASH REPORT:\n" + error.message);
     }
+}
 
     // Call it immediately on script load
     initTFModel();
