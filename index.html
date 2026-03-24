@@ -458,7 +458,7 @@
         const inputSequence = prepareDataForCNN(historyAz, centerSweepAz, 100);
 
         try {
-            // 3. Convert to Tensor. Change dimensions if your Conv1D expects [1, 100, 1] vs Dense [1, 100]
+            // 3. Convert to Tensor (Conv1D MUST be 3D: [batch, steps, channels])
             const inputTensor = tf.tensor3d([inputSequence], [1, 100, 1]); 
             
             // 4. Run Inference
@@ -466,7 +466,7 @@
             const predictedOffsetArray = await prediction.data();
             
             // 5. Calculate Absolute Azimuth
-            const offset = predictedOffsetArray[0]; // Returns a number between -5 and 5
+            const offset = predictedOffsetArray[0];
             const absolutePeak = normalizeAz(centerSweepAz + offset);
 
             alert(`🧠 CNN Analysis:\nCenter Used: ${centerSweepAz.toFixed(2)}°\nPredicted Offset: ${offset.toFixed(3)}°\n\n🎯 AI Recommends pointing to: ${absolutePeak.toFixed(2)}°`);
@@ -475,7 +475,8 @@
             inputTensor.dispose();
             prediction.dispose();
         } catch (err) {
-            alert("Error running inference. The model input shape may not match [1, 100, 1]. Check console.");
+            // THIS WILL SHOW US THE REAL ERROR!
+            alert("CRASH REPORT:\n" + err.message);
             console.error(err);
         }
     });
