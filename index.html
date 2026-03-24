@@ -179,7 +179,7 @@
     async function initTFModel() {
         try {
             // Attempt to load the model from the local "model" folder
-            cnnModel = await tf.loadLayersModel('./model/model.json');
+            cnnModel = await tf.loadLayersModel('https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json');
             els.aiStatus.textContent = "✅ CNN Model Loaded and Ready";
             els.aiStatus.style.color = "var(--success)";
             els.btnPredictAI.disabled = false;
