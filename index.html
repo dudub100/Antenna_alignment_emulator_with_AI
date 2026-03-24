@@ -459,7 +459,7 @@
 
         try {
             // 3. Convert to Tensor (Conv1D MUST be 3D: [batch, steps, channels])
-            const inputTensor = tf.tensor3d([inputSequence], [1, 100, 1]); 
+            const inputTensor = tf.tensor3d(inputSequence, [1, 100, 1]); 
             
             // 4. Run Inference
             const prediction = cnnModel.predict(inputTensor);
