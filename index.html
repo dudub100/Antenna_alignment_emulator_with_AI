@@ -102,6 +102,14 @@
             <button class="ai-btn" id="btnPredictAI" disabled>🧠 PREDICT PEAK WITH CNN</button>
         </div>
 
+        <div class="metric-card full-width" style="border: 2px solid var(--ai);">
+            <h3 style="color: var(--ai);">🤖 AI Predicted Peaks</h3>
+            <div style="display: flex; justify-content: space-around; font-size: 1.2rem;">
+                <div><strong>Azimuth:</strong> <span id="outAiAz">--</span>°</div>
+                <div><strong>Elevation:</strong> <span id="outAiEl">--</span>°</div>
+            </div>
+        </div>
+
         <div class="full-width">
             <button class="info" id="btnFinish" style="font-size: 1.2rem; padding: 15px;">🏁 FINISH ALIGNMENT</button>
         </div>
@@ -144,7 +152,8 @@
     let state = {
         sensorsActive: false, isFirstStart: true, targetAz: 0, targetEl: 0,
         raw: { az: 0, el: 0 }, offsets: { az: 0, el: 0 }, calibrated: { az: 0, el: 0 },
-        currentAtten: 0, maxRsl: -1000, maxAz: 0, maxEl: 0
+        currentAtten: 0, maxRsl: -1000, maxAz: 0, maxEl: 0,
+        predictedAz: null, predictedEl: null // Added for AI Tracking
     };
 
     const els = {
@@ -166,6 +175,8 @@
         outMaxRsl: document.getElementById('outMaxRsl'),
         outMaxAz: document.getElementById('outMaxAz'),
         outMaxEl: document.getElementById('outMaxEl'),
+        outAiAz: document.getElementById('outAiAz'), // New AI Field
+        outAiEl: document.getElementById('outAiEl'), // New AI Field
         resultsCard: document.getElementById('resultsCard'),
         outError: document.getElementById('outError'),
         outResultMessage: document.getElementById('outResultMessage'),
@@ -178,13 +189,16 @@
     // --- TensorFlow Model Loader ---
     async function initTFModel() {
         try {
-            // Attempt to load the model from the local "model" folder
-            cnnModel = await tf.loadLayersModel('https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json');
+            // Updated to load GraphModel with the full absolute path
+            const modelUrl = 'https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model_graph/model.json';
+            cnnModel = await tf.loadGraphModel(modelUrl);
+            
             els.aiStatus.textContent = "✅ CNN Model Loaded and Ready";
             els.aiStatus.style.color = "var(--success)";
             els.btnPredictAI.disabled = false;
         } catch (err) {
-            els.aiStatus.textContent = "⚠️ No model found in /model/ directory.";
+            els.aiStatus.textContent = "⚠️ TF Model Load Error (Check Alert)";
+            alert("TF Load Error:\n" + err.message);
             console.warn("TF Model Load Error: " + err);
         }
     }
@@ -242,24 +256,21 @@
 
     // --- AI Data Preprocessing Pipeline ---
     function prepareDataForCNN(rawHistory, centerAz, numPoints = 100) {
-        // 1. Convert absolute azimuth into relative distance (-180 to 180) from the center
         let relativeData = rawHistory.map(pt => ({
             relX: angularDist(pt.x, centerAz),
             rsl: pt.y
         }));
 
-        // 2. Sort from left to right (- to +)
         relativeData.sort((a, b) => a.relX - b.relX);
 
         let sequence = [];
-        const minTarget = -5.0; // Expected model boundary
-        const maxTarget = 5.0;  // Expected model boundary
+        const minTarget = -5.0; 
+        const maxTarget = 5.0;  
         const stepSize = (maxTarget - minTarget) / (numPoints - 1);
 
-        // 3. Linearly interpolate exactly 100 points
         for (let i = 0; i < numPoints; i++) {
             let targetRelX = minTarget + (i * stepSize);
-            let interpolatedRsl = -100.0; // Background noise default
+            let interpolatedRsl = -100.0; 
 
             let leftPt = null;
             let rightPt = null;
@@ -281,7 +292,6 @@
                 }
             }
             
-            // Push exact RSL value. (If your Python model used min-max scaling, apply it here instead!)
             sequence.push(interpolatedRsl);
         }
         return sequence;
@@ -291,6 +301,10 @@
     function resetMaxHold() {
         state.maxRsl = -1000;
         els.outMaxRsl.textContent = "--"; els.outMaxAz.textContent = "--"; els.outMaxEl.textContent = "--";
+        state.predictedAz = null;
+        state.predictedEl = null;
+        els.outAiAz.textContent = "--";
+        els.outAiEl.textContent = "--";
     }
 
     function clearGraphHistory() {
@@ -322,7 +336,8 @@
             data: {
                 datasets: [
                     { label: 'History Trail', data: [], backgroundColor: 'black', pointRadius: 2 },
-                    { label: 'Current Position', data: [], backgroundColor: '#dc3545', borderColor: 'white', borderWidth: 2, pointRadius: 8 }
+                    { label: 'Current Position', data: [], backgroundColor: '#dc3545', borderColor: 'white', borderWidth: 2, pointRadius: 8 },
+                    { label: 'AI Peak', data: [], type: 'line', borderColor: '#6f42c1', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 } // NEW AI LINE
                 ]
             },
             options: {
@@ -338,8 +353,20 @@
     function updateChartDisplayMode() {
         if (!rslChart) return;
         const mode = els.graphMode.value;
-        rslChart.options.scales.x.title.text = mode === 'azimuth' ? 'Azimuth (°)' : 'Elevation (°)';
-        rslChart.data.datasets[0].data = mode === 'azimuth' ? historyAz : historyEl;
+        const isAz = mode === 'azimuth';
+        
+        rslChart.options.scales.x.title.text = isAz ? 'Azimuth (°)' : 'Elevation (°)';
+        rslChart.data.datasets[0].data = isAz ? historyAz : historyEl;
+        
+        // Check if we have an AI prediction for the current view and draw a line
+        const aiVal = isAz ? state.predictedAz : state.predictedEl;
+        if (aiVal !== undefined && aiVal !== null) {
+            // Draws a vertical line from the bottom (-100) to the top (-20) of the graph
+            rslChart.data.datasets[2].data = [{ x: aiVal, y: -100 }, { x: aiVal, y: -20 }];
+        } else {
+            rslChart.data.datasets[2].data = []; // Hide line if no prediction yet
+        }
+        
         rslChart.update();
     }
 
@@ -446,36 +473,52 @@
     els.graphMode.addEventListener('change', updateChartDisplayMode);
     els.btnClearGraph.addEventListener('click', clearGraphHistory); 
 
-    // AI Prediction Execution
+    // --- SMART AI PREDICTION (UPDATED) ---
     els.btnPredictAI.addEventListener('click', async () => {
         if (!cnnModel) return alert("Model is not loaded yet.");
-        if (historyAz.length < 10) return alert("Please sweep the device first to gather data.");
+        
+        // 1. Determine which axis we are currently viewing
+        const mode = els.graphMode.value;
+        const isAz = mode === 'azimuth';
+        
+        // Grab the appropriate arrays and center points
+        const historyData = isAz ? historyAz : historyEl;
+        const centerSweep = isAz ? state.maxAz : state.maxEl;
 
-        // 1. We use the Max Hold Azimuth as our "0" center to feed the model
-        const centerSweepAz = state.maxAz;
+        if (historyData.length < 10) return alert(`Please sweep the ${mode} first to gather data.`);
 
-        // 2. Preprocess the messy sweep into exactly 100 points representing -5 to +5
-        const inputSequence = prepareDataForCNN(historyAz, centerSweepAz, 100);
+        // 2. Preprocess the data using the selected axis
+        const inputSequence = prepareDataForCNN(historyData, centerSweep, 100);
 
         try {
-            // 3. Convert to Tensor (Conv1D MUST be 3D: [batch, steps, channels])
+            // 3. Convert to 3D Tensor for Conv1D (Without extra brackets!)
             const inputTensor = tf.tensor3d(inputSequence, [1, 100, 1]); 
             
             // 4. Run Inference
             const prediction = cnnModel.predict(inputTensor);
             const predictedOffsetArray = await prediction.data();
             
-            // 5. Calculate Absolute Azimuth
-            const offset = predictedOffsetArray[0];
-            const absolutePeak = normalizeAz(centerSweepAz + offset);
+            // 5. Calculate Absolute Peak
+            const offset = predictedOffsetArray[0]; 
+            const absolutePeak = normalizeAz(centerSweep + offset);
 
-            alert(`🧠 CNN Analysis:\nCenter Used: ${centerSweepAz.toFixed(2)}°\nPredicted Offset: ${offset.toFixed(3)}°\n\n🎯 AI Recommends pointing to: ${absolutePeak.toFixed(2)}°`);
+            // 6. Save the result to state and update the UI fields
+            if (isAz) {
+                state.predictedAz = absolutePeak;
+                els.outAiAz.textContent = absolutePeak.toFixed(2);
+            } else {
+                state.predictedEl = absolutePeak;
+                els.outAiEl.textContent = absolutePeak.toFixed(2);
+            }
+
+            // Force the graph to redraw so the new purple line appears
+            updateChartDisplayMode();
 
             // Cleanup memory
             inputTensor.dispose();
             prediction.dispose();
+            
         } catch (err) {
-            // THIS WILL SHOW US THE REAL ERROR!
             alert("CRASH REPORT:\n" + err.message);
             console.error(err);
         }
