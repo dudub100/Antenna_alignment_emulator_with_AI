@@ -190,7 +190,7 @@
     async function initTFModel() {
         try {
             // Updated to load GraphModel with the full absolute path
-            const modelUrl = 'https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model_graph/model.json';
+            const modelUrl = 'https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json';
             cnnModel = await tf.loadGraphModel(modelUrl);
             
             els.aiStatus.textContent = "✅ CNN Model Loaded and Ready";
