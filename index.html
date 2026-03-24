@@ -3,531 +3,202 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RF Antenna Emulator v3.0 (AI Edition)</title>
+    <title>Antenna Alignment AI Emulator</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
     <style>
-        :root { --primary: #007bff; --success: #28a745; --warning: #ffc107; --danger: #dc3545; --ai: #6f42c1; --bg: #f8f9fa; --text: #333; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 15px; background-color: var(--bg); color: var(--text); user-select: none; }
-        .container { max-width: 800px; margin: 0 auto; }
-        h1 { text-align: center; color: var(--primary); font-size: 1.5rem; }
-        .panel { background: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .input-group { margin-bottom: 10px; }
-        label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 0.9rem;}
-        input[type="number"], select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; border: none; border-radius: 5px; font-size: 1rem; font-weight: bold; cursor: pointer; margin-bottom: 10px; color: white; transition: 0.2s;}
-        button.primary { background-color: var(--primary); }
-        button.success { background-color: var(--success); }
-        button.dark { background-color: #333; }
-        button.danger { background-color: var(--danger); }
-        button.info { background-color: #17a2b8; }
-        button.ai-btn { background-color: var(--ai); }
-        button:active { opacity: 0.8; transform: scale(0.98); }
-        button:disabled { background-color: #ccc; cursor: not-allowed; transform: none; }
-        .dashboard { display: none; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .metric-card { background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-align: center; }
-        .metric-card h3 { margin: 0 0 10px 0; font-size: 0.9rem; color: #666; text-transform: uppercase;}
-        .metric-value { font-size: 1.5rem; font-weight: bold; }
-        .rsl-card { grid-column: 1 / -1; background-color: #333; color: white; }
-        .rsl-card h3 { color: #aaa; }
-        .rsl-value { font-size: 3rem; color: var(--success); }
-        .max-hold-card { background-color: #e9ecef; border: 2px solid #ced4da; }
-        .full-width { grid-column: 1 / -1; }
-        .btn-group { display: flex; gap: 10px; }
-        .blur-target { filter: blur(6px); opacity: 0.7; transition: filter 0.5s ease, opacity 0.5s ease; }
-        .reveal-target { filter: blur(0px); opacity: 1; }
-        #resultsCard { display: none; border: 3px solid var(--primary); }
-        .error-value { font-size: 2.5rem; font-weight: bold; }
-        .chart-container { position: relative; height: 30vh; width: 100%; margin-top: 15px;}
-        #aiStatus { text-align: center; padding: 5px; font-size: 0.8rem; color: #666; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-align: center; padding: 15px; background-color: #f4f4f9; touch-action: manipulation; }
+        h2 { color: #333; }
+        #modelStatus { font-weight: bold; margin: 15px 0; font-size: 1.2em; color: #555; background: #e9ecef; padding: 10px; border-radius: 8px; }
+        button { padding: 15px 20px; margin: 10px 5px; font-size: 16px; border-radius: 8px; border: none; cursor: pointer; color: white; font-weight: bold; width: 90%; max-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        #startBtn { background-color: #28a745; }
+        #predictBtn { background-color: #6f42c1; }
+        #predictBtn:disabled { background-color: #cccccc; cursor: not-allowed; box-shadow: none; }
+        canvas { background: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top: 20px; max-width: 100%; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>📡 RF Alignment Emulator v3.0</h1>
-
-    <div class="panel" id="setupPanel">
-        <div class="input-group">
-            <label>Frequency (GHz):</label>
-            <input type="number" id="inFreq" value="11.0" step="0.1" min="1">
-        </div>
-        <div class="input-group">
-            <label>Antenna Diameter (Feet):</label>
-            <input type="number" id="inDiameter" value="4.0" step="0.5" min="0.5">
-        </div>
-        <button class="success" id="btnPermissions">Start Sensors</button>
-        <button class="primary" id="btnRandomizeTarget" style="display:none;">Set New Targets (Restarts Sweep)</button>
-        <div id="aiStatus">Checking for CNN Model...</div>
-    </div>
-
-    <div class="dashboard" id="mainDashboard">
-        <div class="metric-card rsl-card">
-            <h3>Live RSL</h3>
-            <div class="rsl-value"><span id="outRsl">--</span> dBm</div>
-            <div>Attenuation: <span id="outAtten">--</span> dB</div>
-        </div>
-
-        <div class="metric-card full-width max-hold-card">
-            <h3>⭐ Peak Signal (Max Hold)</h3>
-            <div style="display: flex; justify-content: space-around; font-size: 1.2rem;">
-                <div><strong>RSL:</strong> <span id="outMaxRsl" style="color:var(--success);">--</span></div>
-                <div><strong>Az:</strong> <span id="outMaxAz">--</span>°</div>
-                <div><strong>El:</strong> <span id="outMaxEl">--</span>°</div>
-            </div>
-        </div>
-
-        <div class="metric-card full-width">
-            <h3>Secret Optimal Targets</h3>
-            <div class="metric-value blur-target" id="targetContainer" style="color: var(--primary);">
-                Azimuth: <span id="outTargetAz">--</span>° | Elev: <span id="outTargetEl">--</span>°
-            </div>
-        </div>
-
-        <div class="metric-card">
-            <h3>Azimuth (Yaw)</h3>
-            <div class="metric-value"><span id="outYaw">--</span>°</div>
-        </div>
-        <div class="metric-card">
-            <h3>Elevation (Pitch)</h3>
-            <div class="metric-value"><span id="outPitch">--</span>°</div>
-        </div>
-
-        <div class="full-width btn-group">
-            <button class="dark" id="btnZero">🎯 ZERO GYRO</button>
-            <button class="danger" id="btnStop">⏹ PAUSE</button>
-        </div>
-
-        <div class="full-width">
-            <button class="ai-btn" id="btnPredictAI" disabled>🧠 PREDICT PEAK WITH CNN</button>
-        </div>
-
-        <div class="full-width">
-            <button class="info" id="btnFinish" style="font-size: 1.2rem; padding: 15px;">🏁 FINISH ALIGNMENT</button>
-        </div>
-
-        <div class="metric-card full-width" id="resultsCard">
-            <h3>Alignment Report</h3>
-            <p>Spatial Error (Distance from Target):</p>
-            <div class="error-value" id="outError">--°</div>
-            <p id="outResultMessage" style="font-weight: bold; margin-top: 5px;"></p>
-        </div>
-
-        <div class="panel full-width">
-            <div class="input-group">
-                <label>Graph View:</label>
-                <select id="graphMode">
-                    <option value="azimuth">RSL vs Azimuth</option>
-                    <option value="elevation">RSL vs Elevation</option>
-                </select>
-            </div>
-            <button class="dark" id="btnClearGraph" style="margin-bottom: 0;">🗑 Clear Graph Points</button>
-            <div class="chart-container">
-                <canvas id="rslChart"></canvas>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    const BASE_RSL = -30.0; 
-    let rslChart = null;
-    let lastChartUpdate = 0;
+    <h2>Antenna Alignment AI</h2>
     
-    // CNN Model Variable
-    let cnnModel = null;
+    <div id="modelStatus">⏳ Checking CNN Model...</div>
 
-    let historyAz = [];
-    let historyEl = [];
-    const MAX_HISTORY = 300; 
+    <button id="startBtn" onclick="toggleSensors()">Start Sensors</button>
+    <button id="predictBtn" onclick="predictPeak()" disabled>🧠 PREDICT PEAK WITH CNN</button>
 
-    let state = {
-        sensorsActive: false, isFirstStart: true, targetAz: 0, targetEl: 0,
-        raw: { az: 0, el: 0 }, offsets: { az: 0, el: 0 }, calibrated: { az: 0, el: 0 },
-        currentAtten: 0, maxRsl: -1000, maxAz: 0, maxEl: 0
-    };
+    <canvas id="scanChart" width="400" height="300"></canvas>
 
-    const els = {
-        btnPermissions: document.getElementById('btnPermissions'),
-        btnRandomizeTarget: document.getElementById('btnRandomizeTarget'),
-        btnZero: document.getElementById('btnZero'),
-        btnStop: document.getElementById('btnStop'),
-        btnFinish: document.getElementById('btnFinish'),
-        btnPredictAI: document.getElementById('btnPredictAI'),
-        btnClearGraph: document.getElementById('btnClearGraph'),
-        dashboard: document.getElementById('mainDashboard'),
-        outRsl: document.getElementById('outRsl'),
-        outAtten: document.getElementById('outAtten'),
-        outTargetAz: document.getElementById('outTargetAz'),
-        outTargetEl: document.getElementById('outTargetEl'),
-        targetContainer: document.getElementById('targetContainer'),
-        outYaw: document.getElementById('outYaw'),
-        outPitch: document.getElementById('outPitch'),
-        outMaxRsl: document.getElementById('outMaxRsl'),
-        outMaxAz: document.getElementById('outMaxAz'),
-        outMaxEl: document.getElementById('outMaxEl'),
-        resultsCard: document.getElementById('resultsCard'),
-        outError: document.getElementById('outError'),
-        outResultMessage: document.getElementById('outResultMessage'),
-        graphMode: document.getElementById('graphMode'),
-        inFreq: document.getElementById('inFreq'),
-        inDiameter: document.getElementById('inDiameter'),
-        aiStatus: document.getElementById('aiStatus')
-    };
+    <script>
+        // --- GLOBAL VARIABLES ---
+        let cnnModel = null;
+        let scanData = []; 
+        let isScanning = false;
+        let chart;
 
-    // --- TensorFlow Model Loader ---
-    //async function initTFModel() {
-      //  try {
-            // Attempt to load the model from the local "model" folder
-        //    cnnModel = await tf.loadLayersModel('https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json');
-        //    els.aiStatus.textContent = "✅ CNN Model Loaded and Ready";
-        //    els.aiStatus.style.color = "var(--success)";
-        //    els.btnPredictAI.disabled = false;
-        //} catch (err) {
-        //    els.aiStatus.textContent = "⚠️ No model found in /model/ directory.";
-        //    console.warn("TF Model Load Error: " + err);
-        //}
-    //}
-
-    async function initTFModel() {
-    try {
-        // Change this URL to your exact GitHub Pages absolute URL if you haven't already!
-        const modelUrl = 'https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json';
-        
-        console.log("Attempting to load model from:", modelUrl);
-        cnnModel = await tf.loadLayersModel(modelUrl);
-        
-        document.getElementById('modelStatus').innerText = "✅ CNN Model Loaded and Ready";
-        document.getElementById('predictBtn').disabled = false;
-    } catch (error) {
-        document.getElementById('modelStatus').innerText = "❌ Load Failed";
-        // THIS IS THE MAGIC LINE: It forces the iPad to show the hidden error
-        alert("CRASH REPORT:\n" + error.message);
-    }
-}
-
-    // Call it immediately on script load
-    initTFModel();
-
-    // --- Core Math ---
-    function j1(x) {
-        let ax = Math.abs(x), y, ans1, ans2;
-        if (ax < 8.0) {
-            y = x * x;
-            ans1 = x * (72362614232.0 + y * (-7895059235.0 + y * (242396853.1 + y * (-2972611.439 + y * (15704.48260 + y * (-30.16036606))))));
-            ans2 = 144725228464.0 + y * (2300535178.0 + y * (18583304.74 + y * (99447.43394 + y * (376.9996644 + y * 1.0))));
-            return ans1 / ans2;
-        } else {
-            let z = 8.0 / ax; y = z * z; let xx = ax - 2.356194491;
-            ans1 = 1.0 + y * (0.183105e-2 + y * (-0.3516396491e-4 + y * (0.2457520174e-5 + y * (-0.240337019e-6))));
-            ans2 = 0.04687499995 + y * (-0.2002690873e-3 + y * (0.8449199096e-5 + y * (-0.88228987e-6 + y * (0.105787412e-6))));
-            return Math.sqrt(0.636619772 / ax) * (Math.cos(xx) * ans1 - z * Math.sin(xx) * ans2);
+        // --- 1. INITIALIZE THE NEURAL NETWORK ---
+        async function initTFModel() {
+            try {
+                // Your exact absolute URL
+                const modelUrl = 'https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json';
+                
+                console.log("Attempting to load:", modelUrl);
+                cnnModel = await tf.loadLayersModel(modelUrl);
+                
+                // Success UI Update
+                const statusDiv = document.getElementById('modelStatus');
+                statusDiv.innerText = "✅ CNN Model Loaded and Ready";
+                statusDiv.style.backgroundColor = "#d4edda";
+                statusDiv.style.color = "#155724";
+                
+                // Unlock the purple predict button
+                document.getElementById('predictBtn').disabled = false;
+                
+            } catch (error) {
+                // Failure UI Update
+                const statusDiv = document.getElementById('modelStatus');
+                statusDiv.innerText = "❌ Load Failed (Check Alert)";
+                statusDiv.style.backgroundColor = "#f8d7da";
+                statusDiv.style.color = "#721c24";
+                alert("CRASH REPORT:\n" + error.message);
+            }
         }
-    }
 
-    function normalizeAz(angle) { let a = angle % 360; return a < 0 ? a + 360 : a; }
-    
-    function angularDist(a1, a2) { 
-        let diff = (a1 - a2) % 360; 
-        if (diff > 180) diff -= 360; 
-        if (diff < -180) diff += 360; 
-        return diff; 
-    }
-
-    function calcPatternAtten(offAxisDeg) {
-        const radiusM = (parseFloat(els.inDiameter.value) * 0.3048) / 2;
-        const lambda = 3e8 / (parseFloat(els.inFreq.value) * 1e9);
-        const k = (2 * Math.PI) / lambda;
-        const thetaRad = Math.abs(offAxisDeg) * (Math.PI / 180);
-        if (thetaRad === 0) return 0.0;
-        const x = k * radiusM * Math.sin(thetaRad);
-        if (x === 0) return 0.0;
-        const gainFactor = (2 * j1(x)) / x;
-        if (Math.abs(gainFactor) < 1e-9) return -100.0;
-        return 20 * Math.log10(Math.abs(gainFactor));
-    }
-
-    function getStableAngles(alpha, beta, gamma) {
-        const d2r = Math.PI / 180, r2d = 180 / Math.PI;
-        const a = (alpha || 0) * d2r, b = (beta || 0) * d2r, g = (gamma || 0) * d2r;
-        const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cg = Math.cos(g), sg = Math.sin(g);
-        const vx = -(ca * sg + sa * sb * cg), vy = -(sa * sg - ca * sb * cg), vz = -(cb * cg);                
-        let el = Math.asin(Math.max(-1, Math.min(1, vz))) * r2d;
-        let az = Math.atan2(vx, vy) * r2d;
-        return { az: (az + 360) % 360, el: el };
-    }
-
-    // --- AI Data Preprocessing Pipeline ---
-    function prepareDataForCNN(rawHistory, centerAz, numPoints = 100) {
-        // 1. Convert absolute azimuth into relative distance (-180 to 180) from the center
-        let relativeData = rawHistory.map(pt => ({
-            relX: angularDist(pt.x, centerAz),
-            rsl: pt.y
-        }));
-
-        // 2. Sort from left to right (- to +)
-        relativeData.sort((a, b) => a.relX - b.relX);
-
-        let sequence = [];
-        const minTarget = -5.0; // Expected model boundary
-        const maxTarget = 5.0;  // Expected model boundary
-        const stepSize = (maxTarget - minTarget) / (numPoints - 1);
-
-        // 3. Linearly interpolate exactly 100 points
-        for (let i = 0; i < numPoints; i++) {
-            let targetRelX = minTarget + (i * stepSize);
-            let interpolatedRsl = -100.0; // Background noise default
-
-            let leftPt = null;
-            let rightPt = null;
-
-            for(let j=0; j < relativeData.length - 1; j++) {
-                if(relativeData[j].relX <= targetRelX && relativeData[j+1].relX >= targetRelX) {
-                    leftPt = relativeData[j];
-                    rightPt = relativeData[j+1];
-                    break;
-                }
-            }
-
-            if (leftPt && rightPt) {
-                if (rightPt.relX !== leftPt.relX) {
-                    let ratio = (targetRelX - leftPt.relX) / (rightPt.relX - leftPt.relX);
-                    interpolatedRsl = leftPt.rsl + ratio * (rightPt.rsl - leftPt.rsl);
-                } else {
-                    interpolatedRsl = leftPt.rsl;
-                }
-            }
+        // --- 2. SENSOR CONTROL & IOS PERMISSIONS ---
+        async function toggleSensors() {
+            const btn = document.getElementById('startBtn');
             
-            // Push exact RSL value. (If your Python model used min-max scaling, apply it here instead!)
-            sequence.push(interpolatedRsl);
+            // If currently scanning, stop it
+            if (isScanning) {
+                isScanning = false;
+                window.removeEventListener('deviceorientation', handleOrientation);
+                btn.innerText = "Start Sensors";
+                btn.style.backgroundColor = "#28a745"; // Green
+                return;
+            }
+
+            // Request iOS 13+ Device Orientation permissions
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permissionState = await DeviceOrientationEvent.requestPermission();
+                    if (permissionState === 'granted') {
+                        startSweep(btn);
+                    } else {
+                        alert("Permission to use gyroscope was denied.");
+                    }
+                } catch (error) {
+                    alert("Error requesting sensor permission: " + error);
+                }
+            } else {
+                // Non-iOS or older devices
+                startSweep(btn);
+            }
         }
-        return sequence;
-    }
 
-    // --- State & UI Logic ---
-    function resetMaxHold() {
-        state.maxRsl = -1000;
-        els.outMaxRsl.textContent = "--"; els.outMaxAz.textContent = "--"; els.outMaxEl.textContent = "--";
-    }
+        function startSweep(btn) {
+            isScanning = true;
+            scanData = []; // Clear old graph
+            chart.data.datasets[0].data = []; // Clear chart UI
+            chart.update();
+            
+            btn.innerText = "Stop Scanning";
+            btn.style.backgroundColor = "#dc3545"; // Red
+            window.addEventListener('deviceorientation', handleOrientation);
+        }
 
-    function clearGraphHistory() {
-        historyAz = []; historyEl = [];
-        updateChartDisplayMode();
-    }
+        // --- 3. GATHERING DATA (SIMULATED RSL FROM GYRO) ---
+        function handleOrientation(event) {
+            if (!isScanning) return;
+            
+            // Get compass direction (0-360)
+            let azimuth = event.alpha || 0;
+            
+            // Simulated RSL logic (Pretending the peak is at exactly 180 degrees)
+            let distanceToTarget = Math.abs(azimuth - 180);
+            if (distanceToTarget > 180) distanceToTarget = 360 - distanceToTarget;
+            
+            // Fake RSL drops off from -30 to -90 based on how far away you point
+            let rsl = -90 + (60 * Math.max(0, 1 - (distanceToTarget / 45))); 
+            rsl += (Math.random() * 2 - 1); // Add a tiny bit of noise
 
-    function generateNewTargets() {
-        state.targetAz = Math.random() * 10 + 85; 
-        state.targetEl = Math.random() * 10 + 85;
-        els.outTargetAz.textContent = state.targetAz.toFixed(2);
-        els.outTargetEl.textContent = state.targetEl.toFixed(2);
-        
-        els.targetContainer.classList.remove('reveal-target');
-        els.targetContainer.classList.add('blur-target');
-        els.resultsCard.style.display = 'none';
-        els.btnFinish.disabled = false;
-        els.btnFinish.style.opacity = '1';
+            // Save the data point
+            scanData.push({ x: azimuth, y: rsl });
+            
+            // Update chart visually every 5 ticks to save iPad battery
+            if (scanData.length % 5 === 0) {
+                chart.data.datasets[0].data = scanData;
+                chart.update();
+            }
+        }
 
-        resetMaxHold();
-        clearGraphHistory();
-    }
+        // --- 4. PREDICTING WITH THE CNN ---
+        async function predictPeak() {
+            if (!cnnModel) {
+                alert("Model is still loading or failed to load.");
+                return;
+            }
+            if (scanData.length < 10) {
+                alert("Please sweep the iPad to gather more sensor data first.");
+                return;
+            }
 
-    function initChart() {
-        if (rslChart) rslChart.destroy();
-        const ctx = document.getElementById('rslChart').getContext('2d');
-        rslChart = new Chart(ctx, {
-            type: 'scatter', 
+            try {
+                // Extract just the RSL numbers
+                let rawRsl = scanData.map(d => d.y);
+                
+                // The Python model expects EXACTLY 100 data points.
+                let formattedInput = [];
+                if (rawRsl.length >= 100) {
+                    // Take the last 100 points
+                    formattedInput = rawRsl.slice(-100);
+                } else {
+                    // Pad the beginning with -90 (noise floor) if sweep was too short
+                    formattedInput = new Array(100 - rawRsl.length).fill(-90).concat(rawRsl);
+                }
+
+                // Reshape to [1, 100, 1] for the TensorFlow model
+                const inputTensor = tf.tensor3d([formattedInput], [1, 100, 1]);
+                
+                // Ask the AI for the answer!
+                const prediction = cnnModel.predict(inputTensor);
+                const predictedValue = await prediction.data();
+                
+                // Clean up memory to prevent iPad freezing
+                inputTensor.dispose();
+                prediction.dispose();
+                
+                // Show the result
+                alert("🎯 AI Prediction Complete!\n\nPredicted Peak RSL/Angle: " + predictedValue[0].toFixed(2));
+                
+            } catch (error) {
+                alert("Prediction Error: " + error.message);
+            }
+        }
+
+        // --- 5. SETUP CHART.JS ---
+        const ctx = document.getElementById('scanChart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'scatter',
             data: {
-                datasets: [
-                    { label: 'History Trail', data: [], backgroundColor: 'black', pointRadius: 2 },
-                    { label: 'Current Position', data: [], backgroundColor: '#dc3545', borderColor: 'white', borderWidth: 2, pointRadius: 8 }
-                ]
+                datasets: [{
+                    label: 'RSL Sweep Data',
+                    data: [],
+                    backgroundColor: '#007bff'
+                }]
             },
             options: {
-                responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, 
                 scales: {
-                    x: { type: 'linear', title: { display: true, text: 'Angle (°)' }, min: 80, max: 100 },
-                    y: { title: { display: true, text: 'RSL (dBm)' }, max: -25, min: -100 }
-                }
+                    x: { title: { display: true, text: 'Azimuth (Degrees)' } },
+                    y: { title: { display: true, text: 'Simulated RSL (dBm)' }, max: -20, min: -100 }
+                },
+                animation: false // Turn off animations for faster sweeps
             }
         });
-    }
 
-    function updateChartDisplayMode() {
-        if (!rslChart) return;
-        const mode = els.graphMode.value;
-        rslChart.options.scales.x.title.text = mode === 'azimuth' ? 'Azimuth (°)' : 'Elevation (°)';
-        rslChart.data.datasets[0].data = mode === 'azimuth' ? historyAz : historyEl;
-        rslChart.update();
-    }
-
-    function updateDashboard() {
-        if (!state.sensorsActive) return;
-
-        state.calibrated.az = normalizeAz(state.raw.az + state.offsets.az);
-        state.calibrated.el = normalizeAz(state.raw.el + state.offsets.el);
-
-        els.outYaw.textContent = state.calibrated.az.toFixed(2);
-        els.outPitch.textContent = state.calibrated.el.toFixed(2);
-
-        let dAz = angularDist(state.calibrated.az, state.targetAz);
-        let dEl = angularDist(state.calibrated.el, state.targetEl);
-        let theta2D = Math.sqrt(dAz*dAz + dEl*dEl); 
-        
-        state.currentAtten = calcPatternAtten(theta2D);
-        let rsl = BASE_RSL + state.currentAtten;
-
-        els.outRsl.textContent = rsl.toFixed(2);
-        els.outAtten.textContent = state.currentAtten.toFixed(2);
-
-        if (state.currentAtten > -3) els.outRsl.style.color = 'var(--success)';
-        else if (state.currentAtten > -12) els.outRsl.style.color = 'var(--warning)';
-        else els.outRsl.style.color = 'var(--danger)';
-
-        if (rsl > state.maxRsl) {
-            state.maxRsl = rsl;
-            state.maxAz = state.calibrated.az;
-            state.maxEl = state.calibrated.el;
-            els.outMaxRsl.textContent = rsl.toFixed(2) + " dBm";
-            els.outMaxAz.textContent = state.maxAz.toFixed(2);
-            els.outMaxEl.textContent = state.maxEl.toFixed(2);
-        }
-
-        let now = Date.now();
-        if (now - lastChartUpdate > 100 && rslChart) {
-            const mode = els.graphMode.value;
-            let currentX = mode === 'azimuth' ? state.calibrated.az : state.calibrated.el;
-            let currentY = Math.max(rsl, -100);
-
-            if (currentX >= 80 && currentX <= 100) {
-                historyAz.push({ x: state.calibrated.az, y: currentY });
-                historyEl.push({ x: state.calibrated.el, y: currentY });
-                if (historyAz.length > MAX_HISTORY) historyAz.shift();
-                if (historyEl.length > MAX_HISTORY) historyEl.shift();
-            }
-
-            rslChart.data.datasets[1].data = [{ x: currentX, y: currentY }];
-            rslChart.update();
-            lastChartUpdate = now;
-        }
-    }
-
-    function handleOrientation(event) {
-        const stable = getStableAngles(event.alpha, event.beta, event.gamma);
-        state.raw.az = stable.az;
-        state.raw.el = stable.el;
-        updateDashboard();
-    }
-
-    // --- Buttons & Listeners ---
-    els.btnPermissions.addEventListener('click', () => {
-        try {
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(response => {
-                    if (response === 'granted') executeAppBoot();
-                    else alert("Gyro permission denied.");
-                }).catch(err => alert("Error: " + err.message));
-            } else { executeAppBoot(); }
-        } catch (e) { alert("System Error: " + e.message); }
-    });
-
-    function executeAppBoot() {
-        state.sensorsActive = true;
-        if (state.isFirstStart) {
-            state.isFirstStart = false; 
-            generateNewTargets();
-            initChart();
-            updateChartDisplayMode();
-        }
-        window.addEventListener('deviceorientation', handleOrientation, true);
-        els.btnPermissions.style.display = 'none';
-        els.btnRandomizeTarget.style.display = 'block';
-        els.dashboard.style.display = 'grid';
-    }
-
-    els.btnStop.addEventListener('click', () => {
-        state.sensorsActive = false;
-        window.removeEventListener('deviceorientation', handleOrientation, true);
-    });
-
-    els.btnZero.addEventListener('click', () => {
-        state.offsets.az = normalizeAz(90.0 - state.raw.az);
-        state.offsets.el = normalizeAz(90.0 - state.raw.el);
-        resetMaxHold(); clearGraphHistory(); updateDashboard();
-    });
-
-    els.btnRandomizeTarget.addEventListener('click', () => {
-        generateNewTargets();
-        if (!state.sensorsActive) executeAppBoot(); 
-    });
-
-    els.graphMode.addEventListener('change', updateChartDisplayMode);
-    els.btnClearGraph.addEventListener('click', clearGraphHistory); 
-
-    // AI Prediction Execution
-    els.btnPredictAI.addEventListener('click', async () => {
-        if (!cnnModel) return alert("Model is not loaded yet.");
-        if (historyAz.length < 10) return alert("Please sweep the device first to gather data.");
-
-        // 1. We use the Max Hold Azimuth as our "0" center to feed the model
-        const centerSweepAz = state.maxAz;
-
-        // 2. Preprocess the messy sweep into exactly 100 points representing -5 to +5
-        const inputSequence = prepareDataForCNN(historyAz, centerSweepAz, 100);
-
-        try {
-            // 3. Convert to Tensor. Change dimensions if your Conv1D expects [1, 100, 1] vs Dense [1, 100]
-            const inputTensor = tf.tensor3d([inputSequence], [1, 100, 1]); 
-            
-            // 4. Run Inference
-            const prediction = cnnModel.predict(inputTensor);
-            const predictedOffsetArray = await prediction.data();
-            
-            // 5. Calculate Absolute Azimuth
-            const offset = predictedOffsetArray[0]; // Returns a number between -5 and 5
-            const absolutePeak = normalizeAz(centerSweepAz + offset);
-
-            alert(`🧠 CNN Analysis:\nCenter Used: ${centerSweepAz.toFixed(2)}°\nPredicted Offset: ${offset.toFixed(3)}°\n\n🎯 AI Recommends pointing to: ${absolutePeak.toFixed(2)}°`);
-
-            // Cleanup memory
-            inputTensor.dispose();
-            prediction.dispose();
-        } catch (err) {
-            alert("Error running inference. The model input shape may not match [1, 100, 1]. Check console.");
-            console.error(err);
-        }
-    });
-
-    els.btnFinish.addEventListener('click', () => {
-        state.sensorsActive = false;
-        window.removeEventListener('deviceorientation', handleOrientation, true);
-        
-        els.targetContainer.classList.remove('blur-target');
-        els.targetContainer.classList.add('reveal-target');
-
-        let dAz = angularDist(state.calibrated.az, state.targetAz);
-        let dEl = angularDist(state.calibrated.el, state.targetEl);
-        let error = Math.sqrt(dAz*dAz + dEl*dEl);
-
-        els.resultsCard.style.display = 'block';
-        els.outError.textContent = error.toFixed(2) + "°";
-        
-        if (error <= 0.1) {
-            els.outError.style.color = 'var(--success)';
-            els.outResultMessage.textContent = "Perfect alignment! Spot on.";
-            els.outResultMessage.style.color = 'var(--success)';
-        } else if (error <= 0.3) {
-            els.outError.style.color = 'var(--warning)';
-            els.outResultMessage.textContent = "Good alignment, within acceptable margins.";
-            els.outResultMessage.style.color = 'var(--warning)';
-        } else {
-            els.outError.style.color = 'var(--danger)';
-            els.outResultMessage.textContent = "Misaligned. You missed the main lobe peak.";
-            els.outResultMessage.style.color = 'var(--danger)';
-        }
-
-        els.btnFinish.disabled = true;
-        els.btnFinish.style.opacity = '0.5';
-    });
-</script>
+        // --- 6. BOOT UP WHEN PAGE LOADS ---
+        window.onload = initTFModel;
+    </script>
 </body>
 </html>
