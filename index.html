@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>RF Antenna Emulator v3.1 (AI & Centroid Edition)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        :root {
+            --primary: #1976d2; 
+            --success: #2e7d32; 
+            --warning: #ed6c02; 
+            --danger: #d32f2f; 
+            --text-main: #002b45;
+            --text-muted: #5f6f89;
+            --bg-body: #f5f7fb;
+            --border-color: #dce3ef;
+            --ai: #6f42c1; 
+            --centroid: #fd7e14;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: var(--bg-body); 
+            color: var(--text-main); 
+            user-select: none; 
+        }
+
+        /* Base Grid Layout */
+        .fine-page {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            padding: 8px;
+            box-sizing: border-box;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .fine-main,
+        .fine-side {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 0;
+        }
+
+        /* Card Styles */
+        .card,
+        .fine-tabs-card,
+        .graph-card,
+        .controls-card,
+        .centroid-card,
+        .memory-card,
+        .current-card,
+        .setup-card,
+        .results-card {
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
+            box-sizing: border-box;
+            line-height: 1.6;
+        }
+
+        /* Tabs */
+        .fine-tabs-card {
+            display: flex;
+            gap: 6px;
+            padding: 4px;
+        }
+
+        .graph-tab-btn {
+            flex: 1;
+            height: 36px;
+            border-radius: 6px;
+            background: #f1f4f9;
+            color: var(--text-muted);
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: 0.2s;
+        }
+
+        .graph-tab-btn.active {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        /* Graph */
+        .graph-card {
+            flex: 1;
+            min-height: 300px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Current Stats */
+        .current-card {
+            line-height: 1.8;
+        }
+
+        .current-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .current-row span {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .current-row strong {
+            font-size: 16px;
+            color: var(--text-main);
+        }
+
+        .rsl-value {
+            font-size: 22px !important;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+        }
+
+        /* Buttons */
+        .secondary-btn {
+            width: 100%;
+            height: 36px;
+            margin-top: 8px;
+            border: 1px solid #bfc9d9;
+            border-radius: 6px;
+            background: #f9fbff;
+            color: #0b1f33;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+            transition: 0.2s;
+        }
+        
+        .secondary-btn:active { transform: scale(0.98); }
+        .secondary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .primary-action-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+        }
+
+        /* Forms */
+        label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            height: 30px;
+            font-size: 14px;
+            color: #0b1f33;
+            border: 1px solid #d5deea;
+            border-radius: 5px;
+            padding: 0 10px;
+            box-sizing: border-box;
+            margin-bottom: 8px;
+        }
+
+        /* Setup / Targets / Results Specific */
+        .blur-target { filter: blur(5px); opacity: 0.6; transition: 0.5s ease; }
+        .reveal-target { filter: blur(0px); opacity: 1; }
+        
+        #aiStatus { font-size: 12px; color: var(--text-muted); margin-top: 5px; text-align: center; }
+
+        .centroid-results, .memory-results {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        
+        .centroid-results strong, .memory-results strong { font-weight: 600; color: #1f2937; float: right;}
+        .centroid-note { font-size: 12px; color: #6b7280; text-align: center; margin-top: 4px;}
+
+        .results-card { display: none; border-color: var(--primary); border-width: 2px;}
+
+        /* Landscape / Desktop Support */
+        @media (min-width: 768px) {
+            .fine-page {
+                grid-template-columns: 1fr 320px;
+                height: 100vh;
+                overflow: hidden;
+            }
+            .fine-main {
+                min-width: 0;
+                min-height: 0;
+                overflow: hidden;
+            }
+            .graph-card {
+                flex: 1;
+                min-height: 0;
+                height: auto;
+            }
+            .fine-side {
+                height: 100%;
+                min-height: 0;
+                overflow-y: auto;
+                overflow-x: hidden;
+                padding-right: 2px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="fine-page">
+
+    <!-- MAIN GRAPH AREA -->
+    <div class="fine-main">
+        <div class="fine-tabs-card">
+            <button class="graph-tab-btn active" id="tabAzimuth">Azimuth</button>
+            <button class="graph-tab-btn" id="tabElevation">Elevation</button>
+        </div>
+
+        <div class="graph-card">
+            <canvas id="rslChart"></canvas>
+        </div>
+        
+        <div class="results-card" id="resultsCard">
+            <div style="font-weight: bold; color: var(--text-main); margin-bottom: 8px;">Alignment Report</div>
+            <div class="current-row">
+                <span>Spatial Error:</span>
+                <strong id="outError" style="font-size: 1.2rem;">--°</strong>
+            </div>
+            <div id="outResultMessage" style="margin-top: 8px; font-size: 14px;"></div>
+        </div>
+    </div>
+
+    <!-- SIDE PANEL CONTROLS -->
+    <div class="fine-side">
+
+        <!-- Initial Setup Box (Specific to Emulator) -->
+        <div class="setup-card" id="setupPanel">
+            <label>Frequency (GHz)</label>
+            <input type="number" id="inFreq" value="11.0" step="0.1" min="1">
+            <label>Antenna Diameter (Feet)</label>
+            <input type="number" id="inDiameter" value="4.0" step="0.5" min="0.5">
+            
+            <button class="secondary-btn primary-action-btn" id="btnPermissions">Start Sensors & Begin</button>
+            <button class="secondary-btn" id="btnRandomizeTarget" style="display:none; margin-top:8px;">New Sweep Target</button>
+            <div id="aiStatus">Checking for CNN Model...</div>
+        </div>
+
+        <!-- Dashboard Data (Hidden until started) -->
+        <div id="mainDashboard" style="display: none; flex-direction: column; gap: 8px;">
+            
+            <!-- Current Status -->
+            <div class="current-card">
+                <div class="current-row">
+                    <span>Azimuth</span>
+                    <strong><span id="outYaw">--</span>°</strong>
+                </div>
+                <div class="current-row">
+                    <span>Elevation</span>
+                    <strong><span id="outPitch">--</span>°</strong>
+                </div>
+                <div class="current-row" style="margin-top: 8px;">
+                    <span>Current RSL</span>
+                    <strong class="rsl-value" id="outRsl">-- dBm</strong>
+                </div>
+                <div class="current-row">
+                    <span>Attenuation</span>
+                    <strong><span id="outAtten">--</span> dB</strong>
+                </div>
+            </div>
+
+            <!-- Memory / Max Hold -->
+            <div class="memory-card">
+                <div class="memory-results">
+                    <div>Max RSL: <strong id="outMaxRsl">-- dBm</strong></div>
+                    <div>Azimuth: <strong id="outMaxAz">--°</strong></div>
+                    <div>Elevation: <strong id="outMaxEl">--°</strong></div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="secondary-btn" id="btnZero" style="margin-top: 0;">Zero</button>
+                    <button class="secondary-btn" id="btnClearGraph" style="margin-top: 0;">Clear Graph</button>
+                </div>
+            </div>
+
+            <!-- Centroid / AI Capabilities -->
+            <div class="centroid-card">
+                <div class="centroid-results">
+                    <div style="color: var(--centroid);">Suggested Azimuth: <strong id="outCentroidAz">--°</strong></div>
+                    <div style="color: var(--centroid);">Suggested Elevation: <strong id="outCentroidEl">--°</strong></div>
+                    <div style="color: var(--ai); margin-top: 4px;">AI Azimuth: <strong id="outAiAz">--°</strong></div>
+                    <div style="color: var(--ai);">AI Elevation: <strong id="outAiEl">--°</strong></div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="secondary-btn" id="btnPredictCentroid" style="margin-top: 0; color: var(--centroid);">Find Centroid</button>
+                    <button class="secondary-btn" id="btnPredictAI" style="margin-top: 0; color: var(--ai);" disabled>AI Peak</button>
+                </div>
+                <div class="centroid-note">Requires recent sweep data on active tab</div>
+            </div>
+
+            <!-- Target Controls -->
+            <div class="controls-card">
+                <div style="font-size: 14px; margin-bottom: 8px; color: var(--text-muted);">
+                    Target Offset: 
+                    <span class="blur-target" id="targetContainer" style="color: var(--primary); font-weight: bold;">
+                        Az: <span id="outTargetAz">--</span>° | El: <span id="outTargetEl">--</span>°
+                    </span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="secondary-btn" id="btnStop" style="margin-top: 0;">Pause Sensors</button>
+                    <button class="secondary-btn primary-action-btn" id="btnFinish" style="margin-top: 0;">Finish Alignment</button>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</div>
+
+<script>
+    const BASE_RSL = -30.0; 
+    let rslChart = null;
+    let lastChartUpdate = 0;
+    let activeTab = 'azimuth'; // default state
+    let cnnModel = null;
+
+    let historyAz = [];
+    let historyEl = [];
+    const MAX_HISTORY = 300; 
+
+    let state = {
+        sensorsActive: false, isFirstStart: true, targetAz: 0, targetEl: 0,
+        raw: { az: 0, el: 0 }, offsets: { az: 0, el: 0 }, calibrated: { az: 0, el: 0 },
+        currentAtten: 0, maxRsl: -1000, maxAz: 0, maxEl: 0,
+        predictedAz: null, predictedEl: null,
+        centroidAz: null, centroidEl: null
+    };
+
+    const els = {
+        btnPermissions: document.getElementById('btnPermissions'),
+        btnRandomizeTarget: document.getElementById('btnRandomizeTarget'),
+        btnZero: document.getElementById('btnZero'),
+        btnStop: document.getElementById('btnStop'),
+        btnFinish: document.getElementById('btnFinish'),
+        btnPredictAI: document.getElementById('btnPredictAI'),
+        btnPredictCentroid: document.getElementById('btnPredictCentroid'),
+        btnClearGraph: document.getElementById('btnClearGraph'),
+        dashboard: document.getElementById('mainDashboard'),
+        outRsl: document.getElementById('outRsl'),
+        outAtten: document.getElementById('outAtten'),
+        outTargetAz: document.getElementById('outTargetAz'),
+        outTargetEl: document.getElementById('outTargetEl'),
+        targetContainer: document.getElementById('targetContainer'),
+        outYaw: document.getElementById('outYaw'),
+        outPitch: document.getElementById('outPitch'),
+        outMaxRsl: document.getElementById('outMaxRsl'),
+        outMaxAz: document.getElementById('outMaxAz'),
+        outMaxEl: document.getElementById('outMaxEl'),
+        outAiAz: document.getElementById('outAiAz'), 
+        outAiEl: document.getElementById('outAiEl'), 
+        outCentroidAz: document.getElementById('outCentroidAz'), 
+        outCentroidEl: document.getElementById('outCentroidEl'), 
+        resultsCard: document.getElementById('resultsCard'),
+        outError: document.getElementById('outError'),
+        outResultMessage: document.getElementById('outResultMessage'),
+        inFreq: document.getElementById('inFreq'),
+        inDiameter: document.getElementById('inDiameter'),
+        aiStatus: document.getElementById('aiStatus'),
+        tabAzimuth: document.getElementById('tabAzimuth'),
+        tabElevation: document.getElementById('tabElevation')
+    };
+
+    // --- Tab Logic ---
+    function setTab(mode) {
+        activeTab = mode;
+        if (mode === 'azimuth') {
+            els.tabAzimuth.classList.add('active');
+            els.tabElevation.classList.remove('active');
+        } else {
+            els.tabElevation.classList.add('active');
+            els.tabAzimuth.classList.remove('active');
+        }
+        updateChartDisplayMode();
+    }
+
+    els.tabAzimuth.addEventListener('click', () => setTab('azimuth'));
+    els.tabElevation.addEventListener('click', () => setTab('elevation'));
+
+
+    // --- TensorFlow Model Loader ---
+    async function initTFModel() {
+        try {
+            const modelUrl = 'https://dudub100.github.io/Antenna_alignment_emulator_with_AI/model/model.json';
+            cnnModel = await tf.loadLayersModel(modelUrl);
+            els.aiStatus.textContent = "✅ CNN Model Ready";
+            els.aiStatus.style.color = "var(--success)";
+            els.btnPredictAI.disabled = false;
+        } catch (err) {
+            els.aiStatus.textContent = "⚠️ TF Model Load Error";
+            console.warn("TF Model Load Error: " + err);
+        }
+    }
+    initTFModel();
+
+    // --- Core Math ---
+    function j1(x) {
+        let ax = Math.abs(x), y, ans1, ans2;
+        if (ax < 8.0) {
+            y = x * x;
+            ans1 = x * (72362614232.0 + y * (-7895059235.0 + y * (242396853.1 + y * (-2972611.439 + y * (15704.48260 + y * (-30.16036606))))));
+            ans2 = 144725228464.0 + y * (2300535178.0 + y * (18583304.74 + y * (99447.43394 + y * (376.9996644 + y * 1.0))));
+            return ans1 / ans2;
+        } else {
+            let z = 8.0 / ax; y = z * z; let xx = ax - 2.356194491;
+            ans1 = 1.0 + y * (0.183105e-2 + y * (-0.3516396491e-4 + y * (0.2457520174e-5 + y * (-0.240337019e-6))));
+            ans2 = 0.04687499995 + y * (-0.2002690873e-3 + y * (0.8449199096e-5 + y * (-0.88228987e-6 + y * (0.105787412e-6))));
+            return Math.sqrt(0.636619772 / ax) * (Math.cos(xx) * ans1 - z * Math.sin(xx) * ans2);
+        }
+    }
+
+    function normalizeAz(angle) { let a = angle % 360; return a < 0 ? a + 360 : a; }
+    
+    function angularDist(a1, a2) { 
+        let diff = (a1 - a2) % 360; 
+        if (diff > 180) diff -= 360; 
+        if (diff < -180) diff += 360; 
+        return diff; 
+    }
+
+    function calcPatternAtten(offAxisDeg) {
+        const radiusM = (parseFloat(els.inDiameter.value) * 0.3048) / 2;
+        const lambda = 3e8 / (parseFloat(els.inFreq.value) * 1e9);
+        const k = (2 * Math.PI) / lambda;
+        const thetaRad = Math.abs(offAxisDeg) * (Math.PI / 180);
+        if (thetaRad === 0) return 0.0;
+        const x = k * radiusM * Math.sin(thetaRad);
+        if (x === 0) return 0.0;
+        const gainFactor = (2 * j1(x)) / x;
+        if (Math.abs(gainFactor) < 1e-9) return -100.0;
+        return 20 * Math.log10(Math.abs(gainFactor));
+    }
+
+    function getStableAngles(alpha, beta, gamma) {
+        const d2r = Math.PI / 180, r2d = 180 / Math.PI;
+        const a = (alpha || 0) * d2r, b = (beta || 0) * d2r, g = (gamma || 0) * d2r;
+        const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cg = Math.cos(g), sg = Math.sin(g);
+        const vx = -(ca * sg + sa * sb * cg), vy = -(sa * sg - ca * sb * cg), vz = -(cb * cg);                
+        let el = Math.asin(Math.max(-1, Math.min(1, vz))) * r2d;
+        let az = Math.atan2(vx, vy) * r2d;
+        return { az: (az + 360) % 360, el: el };
+    }
+
+    // --- Data Handlers ---
+    function prepareDataForCNN(rawHistory, centerAz, numPoints = 100) {
+        let relativeData = rawHistory.map(pt => ({ relX: angularDist(pt.x, centerAz), rsl: pt.y }));
+        relativeData.sort((a, b) => a.relX - b.relX);
+        let sequence = [];
+        const minTarget = -5.0, maxTarget = 5.0, stepSize = (maxTarget - minTarget) / (numPoints - 1);
+
+        for (let i = 0; i < numPoints; i++) {
+            let targetRelX = minTarget + (i * stepSize), interpolatedRsl = -100.0, leftPt = null, rightPt = null;
+            for(let j=0; j < relativeData.length - 1; j++) {
+                if(relativeData[j].relX <= targetRelX && relativeData[j+1].relX >= targetRelX) {
+                    leftPt = relativeData[j]; rightPt = relativeData[j+1]; break;
+                }
+            }
+            if (leftPt && rightPt) {
+                if (rightPt.relX !== leftPt.relX) {
+                    let ratio = (targetRelX - leftPt.relX) / (rightPt.relX - leftPt.relX);
+                    interpolatedRsl = leftPt.rsl + ratio * (rightPt.rsl - leftPt.rsl);
+                } else { interpolatedRsl = leftPt.rsl; }
+            }
+            sequence.push(interpolatedRsl);
+        }
+        return sequence;
+    }
+
+    function calculateCentroid(historyData, dynamicRangeDB = 15) {
+        if (historyData.length === 0) return null;
+        let maxRsl = Math.max(...historyData.map(pt => pt.y));
+        let threshold = maxRsl - dynamicRangeDB, sumPowerAngle = 0, sumPower = 0;
+        historyData.forEach(pt => {
+            if (pt.y > threshold) {
+                let linearPower = Math.pow(10, pt.y / 10);
+                sumPowerAngle += pt.x * linearPower; sumPower += linearPower;
+            }
+        });
+        if (sumPower === 0) return null;
+        return sumPowerAngle / sumPower;
+    }
+
+    // --- State & UI Logic ---
+    function resetMaxHold() {
+        state.maxRsl = -1000;
+        els.outMaxRsl.textContent = "-- dBm"; els.outMaxAz.textContent = "--°"; els.outMaxEl.textContent = "--°";
+        state.predictedAz = null; state.predictedEl = null; state.centroidAz = null; state.centroidEl = null;
+        els.outAiAz.textContent = "--°"; els.outAiEl.textContent = "--°";
+        els.outCentroidAz.textContent = "--°"; els.outCentroidEl.textContent = "--°";
+    }
+
+    function clearGraphHistory() {
+        historyAz = []; historyEl = [];
+        updateChartDisplayMode();
+    }
+
+    function generateNewTargets() {
+        state.targetAz = Math.random() * 10 + 85; 
+        state.targetEl = Math.random() * 10 + 85;
+        els.outTargetAz.textContent = state.targetAz.toFixed(2);
+        els.outTargetEl.textContent = state.targetEl.toFixed(2);
+        
+        els.targetContainer.classList.remove('reveal-target');
+        els.targetContainer.classList.add('blur-target');
+        els.resultsCard.style.display = 'none';
+        els.btnFinish.disabled = false;
+        resetMaxHold(); clearGraphHistory();
+    }
+
+    function initChart() {
+        if (rslChart) rslChart.destroy();
+        const ctx = document.getElementById('rslChart').getContext('2d');
+        rslChart = new Chart(ctx, {
+            type: 'scatter', 
+            data: {
+                datasets: [
+                    { label: 'Trail', data: [], backgroundColor: '#5f6f89', pointRadius: 2 },
+                    { label: 'Current', data: [], backgroundColor: '#002b45', borderColor: '#fff', borderWidth: 2, pointRadius: 8 },
+                    { label: 'AI Peak', data: [], type: 'line', borderColor: '#6f42c1', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 },
+                    { label: 'Centroid', data: [], type: 'line', borderColor: '#fd7e14', borderWidth: 2, borderDash: [2, 2], pointRadius: 0 } 
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, 
+                scales: {
+                    x: { type: 'linear', title: { display: true, text: 'Angle (°)' }, min: 80, max: 100, grid: { color: '#dce3ef'} },
+                    y: { title: { display: true, text: 'RSL (dBm)' }, max: -25, min: -100, grid: { color: '#dce3ef'} }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function updateChartDisplayMode() {
+        if (!rslChart) return;
+        const isAz = activeTab === 'azimuth';
+        rslChart.options.scales.x.title.text = isAz ? 'Azimuth (°)' : 'Elevation (°)';
+        rslChart.data.datasets[0].data = isAz ? historyAz : historyEl;
+        
+        const aiVal = isAz ? state.predictedAz : state.predictedEl;
+        rslChart.data.datasets[2].data = aiVal !== null ? [{ x: aiVal, y: -100 }, { x: aiVal, y: -20 }] : [];
+
+        const centVal = isAz ? state.centroidAz : state.centroidEl;
+        rslChart.data.datasets[3].data = centVal !== null ? [{ x: centVal, y: -100 }, { x: centVal, y: -20 }] : [];
+        rslChart.update();
+    }
+
+    function updateDashboard() {
+        if (!state.sensorsActive) return;
+
+        state.calibrated.az = normalizeAz(state.raw.az + state.offsets.az);
+        state.calibrated.el = normalizeAz(state.raw.el + state.offsets.el);
+
+        els.outYaw.textContent = state.calibrated.az.toFixed(2);
+        els.outPitch.textContent = state.calibrated.el.toFixed(2);
+
+        let dAz = angularDist(state.calibrated.az, state.targetAz);
+        let dEl = angularDist(state.calibrated.el, state.targetEl);
+        let theta2D = Math.sqrt(dAz*dAz + dEl*dEl); 
+        
+        state.currentAtten = calcPatternAtten(theta2D);
+        let rsl = BASE_RSL + state.currentAtten;
+
+        els.outRsl.textContent = rsl.toFixed(1) + " dBm";
+        els.outAtten.textContent = state.currentAtten.toFixed(1);
+
+        if (state.currentAtten > -3) els.outRsl.style.color = 'var(--success)';
+        else if (state.currentAtten > -12) els.outRsl.style.color = 'var(--warning)';
+        else els.outRsl.style.color = 'var(--danger)';
+
+        if (rsl > state.maxRsl) {
+            state.maxRsl = rsl; state.maxAz = state.calibrated.az; state.maxEl = state.calibrated.el;
+            els.outMaxRsl.textContent = rsl.toFixed(1) + " dBm";
+            els.outMaxAz.textContent = state.maxAz.toFixed(2) + "°";
+            els.outMaxEl.textContent = state.maxEl.toFixed(2) + "°";
+        }
+
+        let now = Date.now();
+        if (now - lastChartUpdate > 100 && rslChart) {
+            let currentX = activeTab === 'azimuth' ? state.calibrated.az : state.calibrated.el;
+            let currentY = Math.max(rsl, -100);
+
+            if (currentX >= 80 && currentX <= 100) {
+                historyAz.push({ x: state.calibrated.az, y: currentY });
+                historyEl.push({ x: state.calibrated.el, y: currentY });
+                if (historyAz.length > MAX_HISTORY) historyAz.shift();
+                if (historyEl.length > MAX_HISTORY) historyEl.shift();
+            }
+
+            rslChart.data.datasets[1].data = [{ x: currentX, y: currentY }];
+            rslChart.update();
+            lastChartUpdate = now;
+        }
+    }
+
+    function handleOrientation(event) {
+        const stable = getStableAngles(event.alpha, event.beta, event.gamma);
+        state.raw.az = stable.az; state.raw.el = stable.el; updateDashboard();
+    }
+
+    // --- Buttons & Listeners ---
+    els.btnPermissions.addEventListener('click', () => {
+        try {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().then(response => {
+                    if (response === 'granted') executeAppBoot();
+                    else alert("Gyro permission denied.");
+                }).catch(err => alert("Error: " + err.message));
+            } else { executeAppBoot(); }
+        } catch (e) { alert("System Error: " + e.message); }
+    });
+
+    function executeAppBoot() {
+        state.sensorsActive = true;
+        if (state.isFirstStart) {
+            state.isFirstStart = false; 
+            generateNewTargets(); initChart(); updateChartDisplayMode();
+        }
+        window.addEventListener('deviceorientation', handleOrientation, true);
+        els.btnPermissions.style.display = 'none';
+        els.btnRandomizeTarget.style.display = 'block';
+        els.dashboard.style.display = 'flex';
+    }
+
+    els.btnStop.addEventListener('click', () => {
+        state.sensorsActive = !state.sensorsActive;
+        els.btnStop.textContent = state.sensorsActive ? "Pause Sensors" : "Resume Sensors";
+    });
+
+    els.btnZero.addEventListener('click', () => {
+        state.offsets.az = normalizeAz(90.0 - state.raw.az);
+        state.offsets.el = normalizeAz(90.0 - state.raw.el);
+        resetMaxHold(); clearGraphHistory(); updateDashboard();
+    });
+
+    els.btnRandomizeTarget.addEventListener('click', () => {
+        generateNewTargets(); if (!state.sensorsActive) executeAppBoot(); 
+    });
+
+    els.btnClearGraph.addEventListener('click', clearGraphHistory); 
+
+    els.btnPredictCentroid.addEventListener('click', () => {
+        const isAz = activeTab === 'azimuth';
+        const historyData = isAz ? historyAz : historyEl;
+        if (historyData.length < 10) return alert(`Please sweep the ${activeTab} first to gather data.`);
+
+        const predictedAngle = calculateCentroid(historyData, 15); 
+        if (predictedAngle === null) return alert("Not enough valid peak data to calculate centroid.");
+
+        if (isAz) {
+            state.centroidAz = predictedAngle;
+            els.outCentroidAz.textContent = predictedAngle.toFixed(2) + "°";
+        } else {
+            state.centroidEl = predictedAngle;
+            els.outCentroidEl.textContent = predictedAngle.toFixed(2) + "°";
+        }
+        updateChartDisplayMode();
+    });
+
+    els.btnPredictAI.addEventListener('click', async () => {
+        if (!cnnModel) return alert("Model is not loaded yet.");
+        const isAz = activeTab === 'azimuth';
+        const historyData = isAz ? historyAz : historyEl;
+        const centerSweep = isAz ? state.maxAz : state.maxEl;
+
+        if (historyData.length < 10) return alert(`Please sweep the ${activeTab} first to gather data.`);
+        const inputSequence = prepareDataForCNN(historyData, centerSweep, 100);
+
+        try {
+            const inputTensor = tf.tensor3d(inputSequence, [1, 100, 1]); 
+            const prediction = cnnModel.predict(inputTensor);
+            const predictedOffsetArray = await prediction.data();
+            const absolutePeak = normalizeAz(centerSweep + predictedOffsetArray[0]);
+
+            if (isAz) {
+                state.predictedAz = absolutePeak;
+                els.outAiAz.textContent = absolutePeak.toFixed(2) + "°";
+            } else {
+                state.predictedEl = absolutePeak;
+                els.outAiEl.textContent = absolutePeak.toFixed(2) + "°";
+            }
+            updateChartDisplayMode();
+            inputTensor.dispose(); prediction.dispose();
+        } catch (err) { alert("AI CRASH REPORT:\n" + err.message); }
+    });
+
+    els.btnFinish.addEventListener('click', () => {
+        state.sensorsActive = false;
+        els.targetContainer.classList.remove('blur-target');
+        els.targetContainer.classList.add('reveal-target');
+
+        let dAz = angularDist(state.calibrated.az, state.targetAz);
+        let dEl = angularDist(state.calibrated.el, state.targetEl);
+        let error = Math.sqrt(dAz*dAz + dEl*dEl);
+
+        els.resultsCard.style.display = 'block';
+        els.outError.textContent = error.toFixed(2) + "°";
+        
+        if (error <= 0.1) {
+            els.outError.style.color = 'var(--success)';
+            els.outResultMessage.textContent = "Perfect alignment! Spot on.";
+        } else if (error <= 0.3) {
+            els.outError.style.color = 'var(--warning)';
+            els.outResultMessage.textContent = "Good alignment, within acceptable margins.";
+        } else {
+            els.outError.style.color = 'var(--danger)';
+            els.outResultMessage.textContent = "Misaligned. You missed the main lobe peak.";
+        }
+        els.btnFinish.disabled = true;
+    });
+</script>
+</body>
+</html>
